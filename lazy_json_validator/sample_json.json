@@ -1,0 +1,16 @@
+{
+    "name": "Parent",
+    "id": 1,
+    "children": [
+        {
+            "name": ["Child"],
+            "id": 1.1,
+            "children": []
+        },
+        {
+            "name": "Child",
+            "id": ["1.2"],
+            "children": []
+        }
+    ]
+}
