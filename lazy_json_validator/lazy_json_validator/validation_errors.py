@@ -39,7 +39,7 @@ class PathError(Exception):
         return f"{name}(path={path}, message={self.message})"
 
     def __str__(self):
-        return self.message
+        return ", ".join(("path: " + self.path, "message: " + self.message))
 
     def __eq__(self, other: Any):
         if isinstance(other, PathError):
@@ -162,3 +162,33 @@ class AllOfValidationError(ValidationError):
         ))
 
         return super().update_path(path)
+
+
+class CollectiveError(Exception):
+    def __init__(self, errors: list[ValidationError], max_errors=None):
+        self.errors = errors
+        self.max = max_errors
+
+    @staticmethod
+    def to_str(path_error: PathError) -> str:
+        return "\n".join((
+            (path_error.__class__.__name__ + ":"),
+            ("\tpath: " + path_error.path),
+            ("\tmessage: " + path_error.message)
+        ))
+
+    def __str__(self):
+        num_errors = len(self.errors)
+        num_listed = (
+            str(min(self.max, num_errors)) if self.max
+            else "all"
+        )
+        messages = [
+            "",
+            f"[{num_errors}] errors found.",
+            f"Listing {num_listed} errors:"
+        ]
+
+        return "\n".join(
+            messages + list(map(self.to_str, self.errors))
+        )

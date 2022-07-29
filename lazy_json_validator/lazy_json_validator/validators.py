@@ -9,11 +9,11 @@ from .json_types import JTypes, JsonType
 from .validation_errors import (
     InternalError, SchemaError,
     ValidationError, TypeValidationError, OneOfValidationError,
-    AllOfValidationError, AnyOfValidationError
+    AllOfValidationError, AnyOfValidationError,
+    CollectiveError
 )
 from .aux import compose, filter_out_empty_lists, lift_optional
 from . import parsers
-
 
 Validator = Callable[[dict, JsonType], list[ValidationError]]
 
@@ -366,3 +366,14 @@ def validate_boolean(
         return [type_error]
     else:
         return []
+
+
+def validate(
+    schema: dict, payload: dict, raise_error=False, max_errors=10
+) -> list[ValidationError]:
+    """ Main validate function that handles high level configurations. """
+    errors = validate_by_type(schema, payload)
+    if raise_error:
+        raise CollectiveError(errors, max_errors)
+    else:
+        return errors
