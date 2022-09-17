@@ -19,7 +19,11 @@ from lazy_json_validator.json_types import JTypes
 
 
 class TestValidateEnum(unittest.TestCase):
+    """ Test validation against enum lists. """
     def test_match(self):
+        """ Test that objects correctly validate against enum list in schema.
+            "Hi" and 7 both validate against ["Hi", 7]
+        """
         # set up
         schema_obj = {
             "enum": ["Hi", 7]
@@ -35,6 +39,9 @@ class TestValidateEnum(unittest.TestCase):
         self.assertEqual(len(errors), 0)
 
     def test_mismatch(self):
+        """ Test that objects not in the enum list return a Validation Error.
+            8 does not validate against ["Hi", 7]
+        """
         # set up
         schema_obj = {
             "enum": ["Hi", 7]
@@ -53,6 +60,7 @@ class TestValidateEnum(unittest.TestCase):
         self.assertEqual(errors, [expected_error])
 
     def test_list_error(self):
+        """ Test that a Schema Error is raised if "enum" is not a list.  """
         # set up
         schema_obj = {
             "enum": (1, 2)
@@ -72,6 +80,8 @@ class TestValidateEnum(unittest.TestCase):
         self.assertEqual(context.exception, expected_error)
 
     def test_item_error(self):
+        """ Test that a Schema Error is raised if "enum" contains a non json object.
+        """
         # set up
         schema_obj = {
             "enum": [1, 2, (1, 2)]
@@ -93,7 +103,12 @@ class TestValidateEnum(unittest.TestCase):
 
 
 class TestValidateConst(unittest.TestCase):
+    """ Test validation against "const" values. """
     def test_match(self):
+        """ Test values that match the schema "const" value do not raise an
+            error.
+            "Hi" validates against "Hi"
+        """
         # set up
         schema_obj = {
             "const": "Hi"
@@ -107,6 +122,10 @@ class TestValidateConst(unittest.TestCase):
         self.assertEqual(len(errors), 0)
 
     def test_mismatch(self):
+        """ Test values that do not match the schema "const" value return a
+            ValidationError.
+            7 does not validate against "Hi"
+        """
         # set up
         schema_obj = {
             "const": "Hi"
@@ -125,6 +144,9 @@ class TestValidateConst(unittest.TestCase):
         self.assertEqual(errors, [expected_error])
 
     def test_schema_error(self):
+        """ Test that if "const" value is not a json object, a Schema Error is
+            raised.
+        """
         # set up
         schema_obj = {
             "const": (1, 2)
