@@ -44,14 +44,15 @@ loadPokemonAtLevel level id = do
       Left err -> return $ Left err
       Right dbPokemon -> do
         ability <- chooseAbility (CP.dbPokemonAbilities dbPokemon)
-        return $ Right $ Pokemon
+        eitherMoves <- getMovesAtLevel level dbPokemon
+        return $ flip fmap eitherMoves $ \moves -> Pokemon
             { pokemonName=CP.dbPokemonName dbPokemon
             , pokemonLevel=level
             , pokemonNickname=Nothing
             , pokemonAbility=ability
             , pokemonTypes=CP.dbPokemonTypes dbPokemon
             , pokemonStats=CP.dbPokemonStats dbPokemon
-            , pokemonMoveSet=getMovesAtLevel level dbPokemon
+            , pokemonMoveSet=moves
             }
 
 
@@ -70,16 +71,17 @@ chooseAbility abilities = do
 
 
 {- Retrieves up to last 4 pokemon moves for pokemon that are learned at given level. -}
-getMovesAtLevel :: Level -> CP.DatabasePokemon -> IO M.MoveSet
+getMovesAtLevel :: Level -> CP.DatabasePokemon -> IO (Either String M.MoveSet)
 getMovesAtLevel level dbPokemon = do
     let leveledMoves = reverse $ filter ((== CP.LevelUp (unLevel level)) . CP.responseMoveLearnMethod) (CP.dbPokemonMoves dbPokemon)
-    moveList <- mapM (CP.callMove . CP.responseMoveUrl) leveledMoves
-    return $ M.MoveSet
-                (moveList `atMay` 0)
-                (moveList `atMay` 1)
-                (moveList `atMay` 2)
-                (moveList `atMay` 3)
+    moveResponses <- mapM (CP.callMove . CP.responseMoveUrl) leveledMoves
+    let eitherMoveList = sequence moveResponses
+    return $ flip fmap eitherMoveList $ \moveList ->
+        M.MoveSet (moveList `atMay` 0)
+                  (moveList `atMay` 1)
+                  (moveList `atMay` 2)
+                  (moveList `atMay` 3)
 
-{- Converts a list of possible moves from a pokemon to a moveset. -}
+    {- Converts a list of possible moves from a pokemon to a moveset. -}
 caughtMoves :: [CP.ResponseMove] -> M.MoveSet
 caughtMoves = undefined
