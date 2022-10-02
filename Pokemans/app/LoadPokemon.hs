@@ -4,10 +4,11 @@ module LoadPokemon where
 import           System.Random
 
 -- Local Modules
+import Control.Monad.Trans.Except (ExceptT (..), except)
 import qualified CallPokemon     as CP
 import qualified Models          as M
-import           PokemonDatabase (loadPokemon)
-import CallPokemon (DatabasePokemon(dbPokemonMoves))
+import           PokemonDatabase (loadPokemon, PokemanDatabaseException)
+import CallPokemon (DatabasePokemon(dbPokemonMoves), PokemansCallException)
 import Safe
 
 
@@ -37,9 +38,11 @@ type Id = Int
 
 -- Functions
 {- Converts Response to Caught Pokemon -}
-loadPokemonAtLevel :: Level -> Id -> IO (Either String Pokemon)
+loadPokemonAtLevel :: Level -> Id -> ExceptT PokemanDatabaseException IO Pokemon
 loadPokemonAtLevel level id = do
-    loaded <- loadPokemon id
+    dbPokemon <- loadPokemon id
+    let ability = chooseAbility (CP.dbPokemonAbilities dbPokemon)
+    moves <- getMovesAtLevel level dbPokemon
     case loaded of
       Left err -> return $ Left err
       Right dbPokemon -> do
@@ -71,7 +74,7 @@ chooseAbility abilities = do
 
 
 {- Retrieves up to last 4 pokemon moves for pokemon that are learned at given level. -}
-getMovesAtLevel :: Level -> CP.DatabasePokemon -> IO (Either String M.MoveSet)
+getMovesAtLevel :: Level -> CP.DatabasePokemon -> ExceptT PokemansCallException IO M.MoveSet
 getMovesAtLevel level dbPokemon = do
     let leveledMoves = reverse $ filter ((== CP.LevelUp (unLevel level)) . CP.responseMoveLearnMethod) (CP.dbPokemonMoves dbPokemon)
     moveResponses <- mapM (CP.callMove . CP.responseMoveUrl) leveledMoves
@@ -82,6 +85,7 @@ getMovesAtLevel level dbPokemon = do
                   (moveList `atMay` 2)
                   (moveList `atMay` 3)
 
-    {- Converts a list of possible moves from a pokemon to a moveset. -}
+
+{- Converts a list of possible moves from a pokemon to a moveset. -}
 caughtMoves :: [CP.ResponseMove] -> M.MoveSet
 caughtMoves = undefined

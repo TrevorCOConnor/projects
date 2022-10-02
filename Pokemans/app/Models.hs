@@ -1,10 +1,28 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric, ExistentialQuantification #-}
 {- This Module houses the Models used in this app.  -}
 
 module Models where
 
 import           GHC.Generics
 import Data.Binary (Binary)
+import Control.Exception
+
+
+{- Base Exception -}
+data PokemanException = forall e . Exception e => PokemanException e
+
+instance Show PokemanException where
+    show (PokemanException e) = show e
+
+instance Exception PokemanException
+
+
+pokemanExceptionToException :: Exception e => e -> SomeException
+pokemanExceptionToException = toException . PokemanException
+
+
+pokemanExceptionFromException :: Exception e => SomeException -> Maybe e
+pokemanExceptionFromException = fromException
 
 
 {- Pokemon Ability datatype -}

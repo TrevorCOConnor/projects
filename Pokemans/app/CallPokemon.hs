@@ -3,28 +3,56 @@
 
 module CallPokemon where
 
+import           Control.Monad.Trans.Except (ExceptT (..), except, withExceptT, Except)
 import           Data.Aeson
-import qualified Data.Aeson.KeyMap    as KM
+import qualified Data.Aeson.KeyMap          as KM
 import           Data.Aeson.Types
-import           Data.Binary          (Binary)
-import qualified Data.ByteString      as BS
+import           Data.Binary                (Binary)
+import qualified Data.ByteString            as BS
 import           Data.Char
-import qualified Data.Map             as Map
-import           Data.Maybe           (fromMaybe)
-import qualified Data.Text            as T
-import           Data.Tuple.Sequence  (sequenceT)
-import qualified Data.Vector          as V
+import qualified Data.Map                   as Map
+import           Data.Maybe                 (fromMaybe)
+import qualified Data.Text                  as T
+import           Data.Tuple.Sequence        (sequenceT)
+import qualified Data.Vector                as V
 import           GHC.Generics
 import           Network.HTTP.Request
-import qualified Text.Casing          as C
+import qualified Text.Casing                as C
 
 -- Local Modules
-import qualified Models               as M
+import qualified Models                     as M
+import Data.Vector (convert)
 
 
 -- Helpers
 modifyText :: (String -> String) -> T.Text -> T.Text
 modifyText mod = T.pack . mod . T.unpack
+
+
+parseResponse :: Response -> Either BS.ByteString BS.ByteString
+parseResponse resp = if responseStatus resp == 200
+                        then Right $ responseBody resp
+                        else Left $ responseBody resp
+
+
+convertCallExcept :: String -> BS.ByteString -> PokemansCallException
+convertCallExcept url bs = PokemansAPIException {callUrl=url, callErr=show bs}
+
+
+convertDecodeExcept :: String -> String -> PokemansCallException
+convertDecodeExcept schema err = PokemansDecodeException
+    { decodeSchema=schema , decodeErr=err }
+
+
+-- Exceptions
+data PokemansCallException = PokemansAPIException
+                              {callUrl :: String, callErr :: String}
+                           | PokemansDecodeException
+                              {decodeSchema :: String, decodeErr :: String}
+
+instance Show PokemansCallException where
+    show (PokemansAPIException url err) = "Error " ++ err ++ " when calling " ++ url
+    show (PokemansDecodeException schema err) = "Error " ++ err ++ " when decoding to " ++ schema
 
 
 -- Response Datatypes
@@ -255,16 +283,14 @@ pokemonBaseUrl = "https://pokeapi.co/api/v2/pokemon"
    wrong.
    E.g. callPokemon "pikachu" -> ResponsePokemon
 -}
-callPokemon :: String -> IO (Either String DatabasePokemon)
-callPokemon str = callPokemonFromUrl $ pokemonBaseUrl ++ '/':str
+callPokemon :: String -> ExceptT PokemansCallException IO DatabasePokemon
+callPokemon str =  callPokemonFromUrl $ pokemonBaseUrl ++ '/':str
 
 
-callPokemonFromUrl :: String -> IO (Either String DatabasePokemon)
+callPokemonFromUrl :: String -> ExceptT PokemansCallException IO DatabasePokemon
 callPokemonFromUrl url = do
-    resp <- get url
-    if responseStatus resp == 200
-       then return $ eitherDecodeStrict $ responseBody resp
-       else return $ Left $ show $ responseBody resp
+    respBody <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
+    withExceptT (convertDecodeExcept "DatabasePokemon") $ ExceptT $ return $ eitherDecodeStrict respBody
 
 
 data PokemonQueryResult = PokemonQueryResult
@@ -274,23 +300,22 @@ data PokemonQueryResult = PokemonQueryResult
 instance FromJSON PokemonQueryResult where
 
 
-queryPokemon :: IO (Either String [PokemonQueryResult])
+queryPokemon :: ExceptT PokemansCallException IO [PokemonQueryResult]
 queryPokemon = do
-    resp <- get $ pokemonBaseUrl ++ "?limit=10000"
-    if responseStatus resp == 200
-       then return $ do 
-           body <- eitherDecodeStrict $ responseBody resp :: Either String Object
-           parseEither (.: "results") body
-       else return $ Left $ show $ responseBody resp
+    let url = pokemonBaseUrl ++ "?limit=10000"
+    resp <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
+    body <- withExceptT (convertDecodeExcept "object") $ ExceptT $
+        return (eitherDecodeStrict resp :: Either String Object)
+    withExceptT (convertDecodeExcept "results") $ ExceptT $ return $
+       parseEither (.: "results") body
+
 
 
 {- Attempts to get move information by using move url -}
-callMove :: String -> IO (Either String M.Move)
+callMove :: String -> ExceptT PokemansCallException IO M.Move
 callMove url = do
-    resp <- get url
-    if responseStatus resp == 200
-       then return $ eitherDecodeStrict $ responseBody resp
-       else return $ Left $ show $ responseBody resp
+    respBody <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
+    withExceptT (convertDecodeExcept "Move") $ ExceptT $ return $ eitherDecodeStrict respBody
 
 
 {- TODO -}

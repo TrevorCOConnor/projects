@@ -1,16 +1,18 @@
 module PokemonDatabase where
 
 -- Standard Haskell
+import           Control.Exception
 import           Control.Monad
-import qualified Control.Monad.Parallel as MP
+import qualified Control.Monad.Parallel     as MP
+import           Control.Monad.Trans.Except (ExceptT (..),  except, withExceptT, runExceptT)
 import           Data.Binary
-import           Data.Binary.Get  (ByteOffset)
+import           Data.Binary.Get            (ByteOffset)
 import           System.Directory
-import           System.FilePath  ((-<.>), (</>))
+import           System.FilePath            ((-<.>), (</>))
 import           System.IO
 
 -- Local Modules
-import qualified CallPokemon      as CP
+import qualified CallPokemon                as CP
 
 
 -- Constants
@@ -19,6 +21,13 @@ dbDirectory = "PokemonDB"
 
 
 -- Data
+newtype PokemanDatabaseException = MissingPokemanException {missingId :: Int}
+
+
+instance Show PokemanDatabaseException where
+    show (MissingPokemanException id) = "Pokemon (id= " ++ show id ++ " not found in local db. "
+
+
 data ProcessStatus = Complete String
                    | Incomplete
                        { name   :: String
@@ -37,29 +46,26 @@ storePokemon dbPokemon = do
     encodeFile fileName dbPokemon
 
 
-loadPokemon :: Int -> IO (Either String CP.DatabasePokemon)
-loadPokemon pokemonId = do
-    let fileName = dbDirectory </> show pokemonId -<.> "txt"
-    result <- decodeFileOrFail fileName
-    case result of
-      Left (_, err) -> return $ Left err
-      Right p -> return $ Right p
+loadPokemon :: Int -> ExceptT PokemanDatabaseException IO CP.DatabasePokemon
+loadPokemon pokemonId = withExceptT (const (MissingPokemanException pokemonId))
+        $ ExceptT $ decodeFileOrFail fileName
+    where fileName = dbDirectory </> show pokemonId -<.> "txt"
 
 
 downloadPokemon :: ProcessStatus -> String -> IO ProcessStatus
 downloadPokemon (Incomplete name fails errs) url = do
-    resp <- CP.callPokemonFromUrl url
+    resp <- runExceptT $ CP.callPokemonFromUrl url
     putStrLn "Pokemon response received"
     case resp of
       Left err -> do
-          putStrLn err
-          return $ Incomplete name (fails + 1) (err:errs)
+          print err
+          return $ Incomplete name (fails + 1) (show err:errs)
       Right dbPokemon -> do
         putStrLn "Success"
         storePokemon dbPokemon
-        loadable <- loadPokemon $ CP.dbPokemonId dbPokemon
+        loadable <- runExceptT $ loadPokemon $ CP.dbPokemonId dbPokemon
         case loadable of
-          Left err -> return $ Fatal name err
+          Left err -> return $ Fatal name $ show err
           Right _  -> return $ Complete name
 downloadPokemon status _ = return status
 
@@ -76,10 +82,10 @@ populateDatabase :: IO ()
 populateDatabase = do
     dirExists <- doesDirectoryExist dbDirectory
     unless dirExists $ createDirectory dbDirectory
-    pokemonUrls <- CP.queryPokemon
+    pokemonUrls <- runExceptT CP.queryPokemon
     putStrLn "Urls retrieved"
     case pokemonUrls of
-      Left err -> putStrLn err
+      Left err -> print err
       Right urls -> do
         let todos = map setPokemonToInProgress urls
         putStrLn "Processing urls"
