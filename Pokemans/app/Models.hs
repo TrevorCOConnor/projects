@@ -30,6 +30,9 @@ data Ability = Ability
     { abilityName :: String
     , abilityText :: String }
 
+instance Show Ability where
+    show = abilityName
+
 
 {- Data Type for holding pokemon movesets -}
 data MoveSet = MoveSet
@@ -38,6 +41,7 @@ data MoveSet = MoveSet
     , thirdMove  :: Maybe Move
     , fourthMove :: Maybe Move
     }
+    deriving (Show)
 
 
 {- The various types of stats that a pokemon has in battle -}
@@ -45,7 +49,7 @@ data Stat = HP
           | Attack
           | Defense
           | SpecialAttack
-          | SpecalDefense
+          | SpecialDefense
           | Speed
           | Accuracy
           | Evasion
@@ -113,8 +117,9 @@ data Move = Move
      , moveMeta         :: MoveMeta
      , moveStatChanges  :: [StatChange]
      }
-     deriving (Show)
 
+instance Show Move where
+    show = moveName
 
 {- Types of Damage -}
 data DamageClass = Physical

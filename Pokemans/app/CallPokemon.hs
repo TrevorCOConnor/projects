@@ -18,6 +18,8 @@ import qualified Data.Vector                as V
 import           GHC.Generics
 import           Network.HTTP.Request
 import qualified Text.Casing                as C
+import Control.Exception
+import Control.Monad.Trans (lift)
 
 -- Local Modules
 import qualified Models                     as M
@@ -35,12 +37,12 @@ parseResponse resp = if responseStatus resp == 200
                         else Left $ responseBody resp
 
 
-convertCallExcept :: String -> BS.ByteString -> PokemansCallException
-convertCallExcept url bs = PokemansAPIException {callUrl=url, callErr=show bs}
+convertCallExcept :: String -> BS.ByteString -> M.PokemanException
+convertCallExcept url bs = M.PokemanException $ PokemansAPIException {callUrl=url, callErr=show bs}
 
 
-convertDecodeExcept :: String -> String -> PokemansCallException
-convertDecodeExcept schema err = PokemansDecodeException
+convertDecodeExcept :: String -> String -> M.PokemanException
+convertDecodeExcept schema err = M.PokemanException $ PokemansDecodeException
     { decodeSchema=schema , decodeErr=err }
 
 
@@ -53,6 +55,8 @@ data PokemansCallException = PokemansAPIException
 instance Show PokemansCallException where
     show (PokemansAPIException url err) = "Error " ++ err ++ " when calling " ++ url
     show (PokemansDecodeException schema err) = "Error " ++ err ++ " when decoding to " ++ schema
+
+instance Exception PokemansCallException
 
 
 -- Response Datatypes
@@ -124,7 +128,9 @@ instance FromJSON ResponseAbility where
         <$> v .: "name"
         -- responseAbilityEffect
         <*> ((v .: "effect_entries")
-                >>= withArray "effect_entries" (parseJSON . V.head . V.filter effectFilter))
+                >>= withArray "effect_entries" (parseJSON . V.head . V.filter effectFilter)
+                >>= (.: "effect")
+            )
                     where effectFilter :: Value -> Bool
                           effectFilter v = fromMaybe False $ do
                               let parser = withObject "effect_entry" $
@@ -245,7 +251,7 @@ instance FromJSON M.DamageClass where
 instance FromJSON M.MoveMeta where
     parseJSON = withObject "MoveMeta" $ \v -> M.MoveMeta
         <$> ((v .: "category") >>= (.: "name")
-            >>= withText "category.name" (parseJSON . String . modifyText C.pascal))
+            >>= withText "category.name" (parseJSON . String . modifyText C.pascal . T.replace "+" "_"))
         <*> (v .: "crit_rate")
         <*> (v .: "drain")
         <*> (v .: "flinch_chance")
@@ -259,8 +265,9 @@ instance FromJSON M.MoveMeta where
 
 instance FromJSON M.StatChange where
     parseJSON = withObject "StatChange" $ \v -> M.StatChange
-        <$> v .: "stages"
-        <*> v .: "stat"
+        <$> v .: "change"
+        <*> ((v .: "stat") >>= (.: "name")
+                           >>= (parseJSON . String . modifyText C.pascal))
 
 
 instance FromJSON M.MoveCategory where
@@ -283,11 +290,11 @@ pokemonBaseUrl = "https://pokeapi.co/api/v2/pokemon"
    wrong.
    E.g. callPokemon "pikachu" -> ResponsePokemon
 -}
-callPokemon :: String -> ExceptT PokemansCallException IO DatabasePokemon
+callPokemon :: String -> ExceptT M.PokemanException IO DatabasePokemon
 callPokemon str =  callPokemonFromUrl $ pokemonBaseUrl ++ '/':str
 
 
-callPokemonFromUrl :: String -> ExceptT PokemansCallException IO DatabasePokemon
+callPokemonFromUrl :: String -> ExceptT M.PokemanException IO DatabasePokemon
 callPokemonFromUrl url = do
     respBody <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
     withExceptT (convertDecodeExcept "DatabasePokemon") $ ExceptT $ return $ eitherDecodeStrict respBody
@@ -300,7 +307,7 @@ data PokemonQueryResult = PokemonQueryResult
 instance FromJSON PokemonQueryResult where
 
 
-queryPokemon :: ExceptT PokemansCallException IO [PokemonQueryResult]
+queryPokemon :: ExceptT M.PokemanException IO [PokemonQueryResult]
 queryPokemon = do
     let url = pokemonBaseUrl ++ "?limit=10000"
     resp <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
@@ -310,14 +317,15 @@ queryPokemon = do
        parseEither (.: "results") body
 
 
-
 {- Attempts to get move information by using move url -}
-callMove :: String -> ExceptT PokemansCallException IO M.Move
+callMove :: String -> ExceptT M.PokemanException IO M.Move
 callMove url = do
     respBody <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
     withExceptT (convertDecodeExcept "Move") $ ExceptT $ return $ eitherDecodeStrict respBody
 
 
-{- TODO -}
-callAbility :: String -> ResponseAbility
-callAbility = undefined
+{- Attempts to get ability information by uing ability url -}
+callAbility :: String -> ExceptT M.PokemanException IO ResponseAbility
+callAbility url = do
+    respBody <- withExceptT (convertCallExcept url) $ ExceptT $ parseResponse <$> get url
+    withExceptT (convertDecodeExcept "Ability") $ ExceptT $ return $ eitherDecodeStrict respBody

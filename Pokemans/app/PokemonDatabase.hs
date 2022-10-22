@@ -13,6 +13,7 @@ import           System.IO
 
 -- Local Modules
 import qualified CallPokemon                as CP
+import qualified Models as M
 
 
 -- Constants
@@ -26,6 +27,9 @@ newtype PokemanDatabaseException = MissingPokemanException {missingId :: Int}
 
 instance Show PokemanDatabaseException where
     show (MissingPokemanException id) = "Pokemon (id= " ++ show id ++ " not found in local db. "
+
+
+instance Exception PokemanDatabaseException
 
 
 data ProcessStatus = Complete String
@@ -46,8 +50,8 @@ storePokemon dbPokemon = do
     encodeFile fileName dbPokemon
 
 
-loadPokemon :: Int -> ExceptT PokemanDatabaseException IO CP.DatabasePokemon
-loadPokemon pokemonId = withExceptT (const (MissingPokemanException pokemonId))
+loadPokemon :: Int -> ExceptT M.PokemanException IO CP.DatabasePokemon
+loadPokemon pokemonId = withExceptT (const (M.PokemanException $ MissingPokemanException pokemonId))
         $ ExceptT $ decodeFileOrFail fileName
     where fileName = dbDirectory </> show pokemonId -<.> "txt"
 
